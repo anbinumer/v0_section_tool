@@ -84,6 +84,10 @@ class CanvasAPI {
     this.config = config
   }
 
+  getConfig() {
+    return this.config
+  }
+
   private async makeApiRequest(endpoint: string, options: RequestInit = {}) {
     const response = await fetch(`/api/canvas${endpoint}`, {
       method: "POST",
@@ -177,16 +181,6 @@ class CanvasAPI {
       console.error("Error promoting to OF:", error)
       throw error
     }
-  }
-
-  async allocateStudents(allocations: { sectionId: number; studentIds: number[] }[]): Promise<void> {
-    // This would be implemented with additional API routes
-    console.log("Allocate students:", allocations)
-  }
-
-  async moveStudent(studentId: number, fromSectionId: number, toSectionId: number): Promise<void> {
-    // This would be implemented with additional API routes
-    console.log("Move student:", { studentId, fromSectionId, toSectionId })
   }
 }
 

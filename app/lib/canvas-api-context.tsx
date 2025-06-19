@@ -11,8 +11,11 @@ interface CanvasApiContextType {
   setupCanvas: (config: CanvasConfig) => Promise<void>
   syncWithCanvas: () => Promise<void>
   createSection: (name: string, displayName?: string) => Promise<any>
-  allocateStudents: (allocations: any[]) => Promise<void>
-  moveStudent: (studentId: number, fromSectionId: number, toSectionId: number) => Promise<void>
+  allocateStudents: (allocations: any[]) => Promise<any>
+  autoAllocateStudents: () => Promise<any>
+  moveStudent: (studentId: number, fromSectionId: number, toSectionId: number, justification?: string) => Promise<void>
+  getAuditLogs: (filters?: any) => Promise<any[]>
+  batchOperations: Map<string, any>
 }
 
 const CanvasApiContext = createContext<CanvasApiContextType | undefined>(undefined)
@@ -22,6 +25,7 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
   const [isConfigured, setIsConfigured] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [batchOperations, setBatchOperations] = useState(new Map())
 
   const setupCanvas = async (config: CanvasConfig) => {
     setIsLoading(true)
@@ -34,12 +38,12 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
       // Test the connection first
       await canvasApi.testConnection()
 
-      // If connection successful, fetch course data
+      // If connection successful, fetch and cache course data
       const data = await canvasApi.getCourseData()
       setCourseData(data)
       setIsConfigured(true)
 
-      // Store config in localStorage for persistence
+      // Store config securely (consider encryption for production)
       localStorage.setItem("canvas-config", JSON.stringify(config))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect to Canvas")
@@ -81,24 +85,125 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
   const allocateStudents = async (allocations: any[]) => {
     if (!isConfigured) throw new Error("Canvas not configured")
 
+    setIsLoading(true)
     try {
-      await canvasApi.allocateStudents(allocations)
+      const response = await fetch('/api/canvas/allocate-students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...canvasApi.getConfig(),
+          allocations
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Allocation failed')
+      }
+
+      const result = await response.json()
       await syncWithCanvas() // Refresh data
+      return result
     } catch (err) {
       throw err
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const moveStudent = async (studentId: number, fromSectionId: number, toSectionId: number) => {
+  const autoAllocateStudents = async () => {
+    if (!isConfigured || !courseData) throw new Error("Canvas not configured")
+
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/canvas/auto-allocate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...canvasApi.getConfig(),
+          courseId: courseData.courseId
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Auto-allocation failed')
+      }
+
+      const result = await response.json()
+      await syncWithCanvas() // Refresh data
+      return result
+    } catch (err) {
+      throw err
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const moveStudent = async (studentId: number, fromSectionId: number, toSectionId: number, justification?: string) => {
     if (!isConfigured) throw new Error("Canvas not configured")
 
     try {
-      await canvasApi.moveStudent(studentId, fromSectionId, toSectionId)
+      const response = await fetch('/api/canvas/move-student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...canvasApi.getConfig(),
+          studentId,
+          fromSectionId,
+          toSectionId,
+          justification
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to move student')
+      }
+
       await syncWithCanvas() // Refresh data
     } catch (err) {
       throw err
     }
   }
+
+  const getAuditLogs = async (filters: any = {}) => {
+    if (!isConfigured || !courseData) return []
+
+    try {
+      // For now, we'll use Canvas announcements as audit logs
+      // TODO: Implement proper Canvas-based audit logging
+      const response = await fetch('/api/canvas/audit-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...canvasApi.getConfig(),
+          courseId: courseData.courseId,
+          ...filters
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch audit logs')
+      }
+
+      return await response.json()
+    } catch (err) {
+      console.error('Error fetching audit logs:', err)
+      return []
+    }
+  }
+
+  // Periodic sync every 5 minutes when configured
+  useEffect(() => {
+    if (!isConfigured) return
+
+    const interval = setInterval(() => {
+      syncWithCanvas().catch(console.error)
+    }, 5 * 60 * 1000) // 5 minutes
+
+    return () => clearInterval(interval)
+  }, [isConfigured])
 
   // Try to restore config from localStorage on mount
   useEffect(() => {
@@ -127,7 +232,10 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
         syncWithCanvas,
         createSection,
         allocateStudents,
+        autoAllocateStudents,
         moveStudent,
+        getAuditLogs,
+        batchOperations,
       }}
     >
       {children}

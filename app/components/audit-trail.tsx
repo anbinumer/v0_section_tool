@@ -1,81 +1,63 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FileText, Search, Download, User, Calendar, Activity, Shield, AlertTriangle, CheckCircle } from "lucide-react"
-
-// Mock audit data
-const mockAuditLogs = [
-  {
-    id: 1,
-    timestamp: new Date("2024-01-15T10:30:00"),
-    user: "Dr. Sarah Johnson",
-    action: "Section Created",
-    details: 'Created section "Tutorial Group A"',
-    type: "create",
-    severity: "info",
-    justification: null,
-  },
-  {
-    id: 2,
-    timestamp: new Date("2024-01-15T10:32:00"),
-    user: "Dr. Sarah Johnson",
-    action: "Student Allocated",
-    details: "Allocated 24 students to Tutorial Group A via auto-allocation",
-    type: "allocation",
-    severity: "info",
-    justification: null,
-  },
-  {
-    id: 3,
-    timestamp: new Date("2024-01-15T14:15:00"),
-    user: "Dr. Sarah Johnson",
-    action: "Student Moved",
-    details: "Moved Student John Smith from Tutorial Group A to Tutorial Group B",
-    type: "move",
-    severity: "warning",
-    justification: "Student requested transfer due to scheduling conflict",
-  },
-  {
-    id: 4,
-    timestamp: new Date("2024-01-16T09:00:00"),
-    user: "Dr. Sarah Johnson",
-    action: "Ratio Override",
-    details: "Approved 36 students for Tutorial Group C (exceeds 35 limit)",
-    type: "override",
-    severity: "critical",
-    justification: "Emergency enrollment surge - additional OF to be assigned next week",
-  },
-  {
-    id: 5,
-    timestamp: new Date("2024-01-16T11:20:00"),
-    user: "System",
-    action: "Post-Census Enrollment",
-    details: "New student enrollment detected after census date",
-    type: "enrollment",
-    severity: "warning",
-    justification: null,
-  },
-]
+import { FileText, Search, Download, User, Calendar, Activity, Shield, AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
+import { useCanvasApi } from "../lib/canvas-api-context"
 
 export function AuditTrail() {
-  const [logs, setLogs] = useState(mockAuditLogs)
+  const { getAuditLogs, isLoading } = useCanvasApi()
+  const [logs, setLogs] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState("all")
   const [filterSeverity, setFilterSeverity] = useState("all")
+  const [isLoadingLogs, setIsLoadingLogs] = useState(true)
+  const [summary, setSummary] = useState({ info: 0, warning: 0, critical: 0 })
+
+  // Load audit logs on component mount
+  useEffect(() => {
+    loadAuditLogs()
+  }, [])
+
+  const loadAuditLogs = async () => {
+    setIsLoadingLogs(true)
+    try {
+      const result = await getAuditLogs({
+        severity: filterSeverity === 'all' ? undefined : filterSeverity,
+        action: filterType === 'all' ? undefined : filterType,
+      })
+      
+      if (result && Array.isArray(result)) {
+        setLogs(result)
+      } else if (result && (result as any).logs && Array.isArray((result as any).logs)) {
+        setLogs((result as any).logs)
+        setSummary((result as any).summary || { info: 0, warning: 0, critical: 0 })
+      }
+    } catch (error) {
+      console.error('Failed to load audit logs:', error)
+      // Fallback to empty array if Canvas audit logs fail
+      setLogs([])
+    } finally {
+      setIsLoadingLogs(false)
+    }
+  }
+
+  // Reload logs when filters change
+  useEffect(() => {
+    loadAuditLogs()
+  }, [filterType, filterSeverity])
 
   const filteredLogs = logs.filter((log) => {
     const matchesSearch =
       log.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.user.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = filterType === "all" || log.type === filterType
-    const matchesSeverity = filterSeverity === "all" || log.severity === filterSeverity
+      log.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.action.toLowerCase().includes(searchTerm.toLowerCase())
 
-    return matchesSearch && matchesType && matchesSeverity
+    return matchesSearch
   })
 
   const getSeverityIcon = (severity: string) => {
@@ -121,6 +103,32 @@ export function AuditTrail() {
     }
   }
 
+  const handleExportLogs = () => {
+    const csvContent = [
+      ['Timestamp', 'User', 'Action', 'Details', 'Severity', 'Justification'].join(','),
+      ...filteredLogs.map(log => [
+        log.timestamp,
+        log.user,
+        log.action,
+        `"${log.details.replace(/"/g, '""')}"`,
+        log.severity,
+        log.justification ? `"${log.justification.replace(/"/g, '""')}"` : ''
+      ].join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob)
+      link.setAttribute('href', url)
+      link.setAttribute('download', `audit_logs_${new Date().toISOString().split('T')[0]}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Audit Trail Header */}
@@ -130,13 +138,33 @@ export function AuditTrail() {
             <div className="flex items-center space-x-2">
               <FileText className="w-5 h-5 text-purple-600" />
               <span>Audit Trail</span>
+              {isLoadingLogs && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
             </div>
-            <Button variant="outline" className="flex items-center space-x-2">
-              <Download className="w-4 h-4" />
-              <span>Export Logs</span>
-            </Button>
+            <div className="flex space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={loadAuditLogs}
+                disabled={isLoadingLogs}
+                className="flex items-center space-x-2"
+              >
+                <Activity className="w-4 h-4" />
+                <span>Refresh</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleExportLogs}
+                disabled={filteredLogs.length === 0}
+                className="flex items-center space-x-2"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export Logs</span>
+              </Button>
+            </div>
           </CardTitle>
-          <CardDescription>Complete history of all section management activities and changes</CardDescription>
+          <CardDescription>
+            Complete history of all section management activities stored in Canvas
+            {logs.length > 0 && ` (${logs.length} total logs)`}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {/* Filters */}
@@ -161,7 +189,7 @@ export function AuditTrail() {
                 <SelectItem value="create">Section Created</SelectItem>
                 <SelectItem value="allocation">Student Allocation</SelectItem>
                 <SelectItem value="move">Student Move</SelectItem>
-                <SelectItem value="override">Ratio Override</SelectItem>
+                <SelectItem value="override">Override/Promotion</SelectItem>
                 <SelectItem value="enrollment">Enrollment</SelectItem>
               </SelectContent>
             </Select>
@@ -185,28 +213,28 @@ export function AuditTrail() {
                 <CheckCircle className="w-4 h-4 text-green-600" />
                 <span className="text-sm font-medium text-green-900">Info</span>
               </div>
-              <p className="text-lg font-bold text-green-900">{logs.filter((l) => l.severity === "info").length}</p>
+              <p className="text-lg font-bold text-green-900">{summary.info}</p>
             </div>
             <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
               <div className="flex items-center space-x-2">
                 <AlertTriangle className="w-4 h-4 text-yellow-600" />
                 <span className="text-sm font-medium text-yellow-900">Warning</span>
               </div>
-              <p className="text-lg font-bold text-yellow-900">{logs.filter((l) => l.severity === "warning").length}</p>
+              <p className="text-lg font-bold text-yellow-900">{summary.warning}</p>
             </div>
             <div className="bg-red-50 p-3 rounded-lg border border-red-200">
               <div className="flex items-center space-x-2">
                 <AlertTriangle className="w-4 h-4 text-red-600" />
                 <span className="text-sm font-medium text-red-900">Critical</span>
               </div>
-              <p className="text-lg font-bold text-red-900">{logs.filter((l) => l.severity === "critical").length}</p>
+              <p className="text-lg font-bold text-red-900">{summary.critical}</p>
             </div>
-            <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
               <div className="flex items-center space-x-2">
-                <Activity className="w-4 h-4 text-purple-600" />
-                <span className="text-sm font-medium text-purple-900">Total</span>
+                <FileText className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">Total</span>
               </div>
-              <p className="text-lg font-bold text-purple-900">{logs.length}</p>
+              <p className="text-lg font-bold text-blue-900">{filteredLogs.length}</p>
             </div>
           </div>
         </CardContent>
@@ -217,53 +245,72 @@ export function AuditTrail() {
         <CardHeader>
           <CardTitle>Activity Log</CardTitle>
           <CardDescription>
-            Showing {filteredLogs.length} of {logs.length} entries
+            {filteredLogs.length === 0 
+              ? isLoadingLogs 
+                ? "Loading audit logs..." 
+                : "No audit logs found matching your criteria"
+              : `Showing ${filteredLogs.length} log entries`
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {filteredLogs.map((log) => (
-              <Card key={log.id} className={`border-l-4 ${getSeverityColor(log.severity)}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      {getSeverityIcon(log.severity)}
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h4 className="font-semibold">{log.action}</h4>
-                          <Badge variant="outline" className={getTypeColor(log.type)}>
-                            {log.type}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-gray-700 mb-2">{log.details}</p>
-                        {log.justification && (
-                          <div className="bg-gray-50 p-2 rounded text-sm">
-                            <strong>Justification:</strong> {log.justification}
-                          </div>
-                        )}
-                        <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                          <div className="flex items-center space-x-1">
-                            <User className="w-3 h-3" />
-                            <span>{log.user}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <Calendar className="w-3 h-3" />
-                            <span>{log.timestamp.toLocaleString()}</span>
-                          </div>
-                        </div>
+          {isLoadingLogs ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              <span className="ml-2 text-gray-600">Loading audit logs from Canvas...</span>
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              {logs.length === 0 ? (
+                <div>
+                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>No audit logs found.</p>
+                  <p className="text-sm">Activity will be logged here as you use the tool.</p>
+                </div>
+              ) : (
+                <div>
+                  <Search className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>No logs match your search criteria.</p>
+                  <p className="text-sm">Try adjusting your filters or search terms.</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {filteredLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg border border-gray-200"
+                >
+                  <div className="flex-shrink-0">
+                    {getSeverityIcon(log.severity)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center space-x-2">
+                        <Badge variant="outline" className={getSeverityColor(log.severity)}>
+                          {log.severity}
+                        </Badge>
+                        <Badge variant="outline" className={getTypeColor(log.type)}>
+                          {log.action}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center text-xs text-gray-500">
+                        <Calendar className="w-3 h-3 mr-1" />
+                        {new Date(log.timestamp).toLocaleString()}
                       </div>
                     </div>
+                    <p className="text-sm font-medium text-gray-900 mb-1">{log.details}</p>
+                    <div className="flex items-center text-xs text-gray-500">
+                      <User className="w-3 h-3 mr-1" />
+                      <span className="mr-3">By: {log.user}</span>
+                      {log.justification && (
+                        <span className="italic">Reason: {log.justification}</span>
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {filteredLogs.length === 0 && (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No logs found</h3>
-              <p className="text-gray-600">Try adjusting your search or filter criteria</p>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

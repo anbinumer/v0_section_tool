@@ -1,13 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { UserPlus, AlertTriangle, CheckCircle, Shuffle, Target } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { UserPlus, AlertTriangle, CheckCircle, Shuffle, Target, Clock, Users } from "lucide-react"
+import { useCanvasApi } from "../lib/canvas-api-context"
 
 interface CourseData {
   totalStudents: number
@@ -28,56 +30,104 @@ interface StudentAllocationProps {
 }
 
 export function StudentAllocation({ courseData }: StudentAllocationProps) {
+  const { autoAllocateStudents, allocateStudents, isLoading } = useCanvasApi()
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto")
   const [selectedStudents, setSelectedStudents] = useState<number[]>([])
   const [previewAllocation, setPreviewAllocation] = useState<any>(null)
   const [isAllocating, setIsAllocating] = useState(false)
+  const [allocationProgress, setAllocationProgress] = useState(0)
+  const [allocationStatus, setAllocationStatus] = useState<string>("")
+  const [allocationResult, setAllocationResult] = useState<any>(null)
 
   const handleAutoAllocation = async () => {
     setIsAllocating(true)
+    setAllocationProgress(0)
+    setAllocationStatus("Calculating optimal allocation...")
+    setAllocationResult(null)
 
-    // Simulate allocation algorithm
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setAllocationProgress(prev => Math.min(prev + 10, 90))
+      }, 200)
 
-    // Use actual course data for allocation
-    const availableOFs = courseData.facilitators || []
-    const unassignedStudents = courseData.students?.filter((s) => !s.currentSectionId) || []
+      // Use actual course data for allocation preview
+      const availableOFs = courseData.facilitators || []
+      const unassignedStudents = courseData.students?.filter(s => !s.currentSectionId) || []
 
-    if (availableOFs.length === 0) {
+      if (availableOFs.length === 0) {
+        throw new Error('No facilitators available for allocation')
+      }
+
+      setAllocationStatus("Generating allocation preview...")
+
+      // Calculate optimal distribution
+      const studentsPerSection = Math.ceil(unassignedStudents.length / availableOFs.length)
+
+      const allocation = availableOFs
+        .map((of, index) => {
+          const startIndex = index * studentsPerSection
+          const endIndex = Math.min(startIndex + studentsPerSection, unassignedStudents.length)
+          const sectionStudents = unassignedStudents.slice(startIndex, endIndex)
+
+          return {
+            sectionName: `Tutorial Group ${String.fromCharCode(65 + index)}`, // A, B, C, etc.
+            facilitator: of,
+            students: sectionStudents,
+            ratio: `1:${sectionStudents.length}`,
+            studentCount: sectionStudents.length,
+          }
+        })
+        .filter((section) => section.students.length > 0)
+
+      clearInterval(progressInterval)
+      setAllocationProgress(100)
+      setAllocationStatus("Preview ready")
+      setPreviewAllocation(allocation)
+
+    } catch (error) {
+      setAllocationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
       setIsAllocating(false)
-      return
     }
-
-    // Calculate optimal distribution
-    const studentsPerSection = Math.ceil(unassignedStudents.length / availableOFs.length)
-
-    const allocation = availableOFs
-      .map((of, index) => {
-        const startIndex = index * studentsPerSection
-        const endIndex = Math.min(startIndex + studentsPerSection, unassignedStudents.length)
-        const sectionStudents = unassignedStudents.slice(startIndex, endIndex)
-
-        return {
-          sectionName: `Tutorial Group ${String.fromCharCode(65 + index)}`, // A, B, C, etc.
-          of: of,
-          students: sectionStudents,
-          ratio: `1:${sectionStudents.length}`,
-          studentCount: sectionStudents.length,
-        }
-      })
-      .filter((section) => section.students.length > 0) // Only include sections with students
-
-    setPreviewAllocation(allocation)
-    setIsAllocating(false)
   }
 
   const handleConfirmAllocation = async () => {
+    if (!previewAllocation) return
+
     setIsAllocating(true)
-    // Simulate Canvas API calls
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-    setIsAllocating(false)
-    // Reset preview
-    setPreviewAllocation(null)
+    setAllocationProgress(0)
+    setAllocationStatus("Implementing allocation in Canvas...")
+
+    try {
+      // Call the auto-allocation API
+      const result = await autoAllocateStudents()
+      
+      setAllocationResult(result.results)
+      setAllocationStatus("Allocation completed successfully!")
+      setPreviewAllocation(null) // Clear preview after successful allocation
+      
+    } catch (error) {
+      setAllocationStatus(`Error: ${error instanceof Error ? error.message : 'Allocation failed'}`)
+    } finally {
+      setIsAllocating(false)
+      setAllocationProgress(100)
+    }
+  }
+
+  const handleManualAllocation = async (allocations: any[]) => {
+    setIsAllocating(true)
+    setAllocationStatus("Processing manual allocations...")
+
+    try {
+      const result = await allocateStudents(allocations)
+      setAllocationResult(result)
+      setAllocationStatus("Manual allocation completed!")
+    } catch (error) {
+      setAllocationStatus(`Error: ${error instanceof Error ? error.message : 'Manual allocation failed'}`)
+    } finally {
+      setIsAllocating(false)
+    }
   }
 
   return (
@@ -150,7 +200,7 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
           <CardContent className="space-y-4">
             {courseData.facilitators && courseData.facilitators.length > 0 ? (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="target-ratio">Target Student:OF Ratio</Label>
                     <Input id="target-ratio" value="1:25" readOnly className="bg-gray-50" />
@@ -158,6 +208,15 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                   <div className="space-y-2">
                     <Label htmlFor="sections-count">Number of Sections</Label>
                     <Input id="sections-count" value={courseData.facilitators.length} readOnly className="bg-gray-50" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="unassigned-count">Unassigned Students</Label>
+                    <Input 
+                      id="unassigned-count" 
+                      value={courseData.students?.filter(s => !s.currentSectionId).length || 0} 
+                      readOnly 
+                      className="bg-gray-50" 
+                    />
                   </div>
                 </div>
 
@@ -172,31 +231,51 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                             <span className="text-xs text-blue-600 ml-2">({of.roles?.join(", ")})</span>
                           )}
                         </div>
-                        <span className="text-sm text-gray-600">{of.email}</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-gray-600">{of.email}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {of.currentStudents || 0}/{of.maxStudents || 25}
+                          </Badge>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <Alert className="border-blue-200 bg-blue-50">
-                  <CheckCircle className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-blue-800">
-                    Auto-allocation will create <strong>{courseData.facilitators.length} sections</strong> distributing{" "}
-                    <strong>
-                      {courseData.students?.filter((s) => !s.currentSectionId).length || 0} unassigned students
-                    </strong>{" "}
-                    across available Online Facilitators.
-                  </AlertDescription>
-                </Alert>
+                {/* Progress Display */}
+                {(isAllocating || allocationProgress > 0) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Allocation Progress</span>
+                      <span className="text-sm text-muted-foreground">{allocationProgress}%</span>
+                    </div>
+                    <Progress value={allocationProgress} className="h-2" />
+                    <p className="text-sm text-gray-600 flex items-center">
+                      <Clock className="w-4 h-4 mr-1" />
+                      {allocationStatus}
+                    </p>
+                  </div>
+                )}
 
+                {/* Action Buttons */}
                 <div className="flex space-x-3">
                   <Button
                     onClick={handleAutoAllocation}
-                    disabled={isAllocating || !courseData.students?.some((s) => !s.currentSectionId)}
+                    disabled={isAllocating || !courseData.students?.some(s => !s.currentSectionId)}
                     className="bg-green-600 hover:bg-green-700"
                   >
                     {isAllocating ? "Calculating..." : "Generate Allocation Preview"}
                   </Button>
+                  
+                  {previewAllocation && (
+                    <Button
+                      onClick={handleConfirmAllocation}
+                      disabled={isAllocating}
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      {isAllocating ? "Implementing..." : "Confirm & Execute Allocation"}
+                    </Button>
+                  )}
                 </div>
               </>
             ) : (
@@ -231,23 +310,31 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                       <div>
                         <h4 className="font-semibold text-lg">{section.sectionName}</h4>
                         <p className="text-sm text-muted-foreground">
-                          OF: {section.of.name}
-                          {section.of.isMultiRole && (
+                          OF: {section.facilitator.name}
+                          {section.facilitator.isMultiRole && (
                             <span className="text-xs text-blue-600 ml-1">
-                              (Multiple roles: {section.of.roles?.join(", ")})
+                              (Multiple roles: {section.facilitator.roles?.join(", ")})
                             </span>
                           )}
                         </p>
-                        <p className="text-xs text-gray-500">{section.of.email}</p>
+                        <p className="text-xs text-gray-500">{section.facilitator.email}</p>
                       </div>
                       <div className="text-right">
-                        <Badge variant="outline" className="mb-1">
+                        <Badge 
+                          variant="outline" 
+                          className={`mb-1 ${
+                            section.studentCount <= 25 ? 'bg-green-100 text-green-800' :
+                            section.studentCount <= 35 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}
+                        >
                           {section.ratio}
                         </Badge>
                         <p className="text-sm text-muted-foreground">{section.studentCount} students</p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    
+                    <div className="flex items-center space-x-2 mb-3">
                       <div
                         className={`w-3 h-3 rounded-full ${
                           section.studentCount <= 25
@@ -275,8 +362,8 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                     </div>
 
                     {/* Show some student names as preview */}
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <p className="text-xs text-gray-600 mb-1">Students assigned:</p>
+                    <div className="pt-3 border-t border-gray-100">
+                      <p className="text-xs text-gray-600 mb-1">Students to be assigned:</p>
                       <div className="flex flex-wrap gap-1">
                         {section.students.slice(0, 3).map((student: any, idx: number) => (
                           <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
@@ -327,19 +414,86 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                     : "Some sections exceed recommended ratios. Consider adding more Online Facilitators or review allocation."}
               </AlertDescription>
             </Alert>
+          </CardContent>
+        </Card>
+      )}
 
-            <div className="flex space-x-3">
-              <Button
-                onClick={handleConfirmAllocation}
-                disabled={isAllocating}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {isAllocating ? "Implementing..." : "Confirm & Implement Allocation"}
-              </Button>
-              <Button variant="outline" onClick={() => setPreviewAllocation(null)} disabled={isAllocating}>
-                Cancel
-              </Button>
+      {/* Allocation Results */}
+      {allocationResult && (
+        <Card className="border-blue-200">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Users className="w-5 h-5 text-blue-600" />
+              <span>Allocation Results</span>
+            </CardTitle>
+            <CardDescription>Summary of the completed allocation</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <div className="flex items-center space-x-2">
+                  <Users className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">Total Students</span>
+                </div>
+                <p className="text-lg font-bold text-blue-900">{allocationResult.totalStudents || 0}</p>
+              </div>
+              
+              <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-900">Successfully Allocated</span>
+                </div>
+                <p className="text-lg font-bold text-green-900">{allocationResult.allocated || 0}</p>
+              </div>
+              
+              <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                <div className="flex items-center space-x-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                  <span className="text-sm font-medium text-red-900">Failed</span>
+                </div>
+                <p className="text-lg font-bold text-red-900">{allocationResult.failed || 0}</p>
+              </div>
+              
+              <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                <div className="flex items-center space-x-2">
+                  <Target className="w-4 h-4 text-purple-600" />
+                  <span className="text-sm font-medium text-purple-900">Sections Created</span>
+                </div>
+                <p className="text-lg font-bold text-purple-900">{allocationResult.sections || 0}</p>
+              </div>
             </div>
+
+            {allocationResult.errors && allocationResult.errors.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-medium text-red-900">Errors Encountered:</h4>
+                <div className="bg-red-50 p-3 rounded-lg border border-red-200 max-h-40 overflow-y-auto">
+                  {allocationResult.errors.map((error: any, index: number) => (
+                    <div key={index} className="text-sm text-red-800 mb-1">
+                      • {error.error || error.message || JSON.stringify(error)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Manual Allocation Interface */}
+      {allocationMode === "manual" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Manual Student Assignment</CardTitle>
+            <CardDescription>Drag and drop students to assign them to specific sections</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Alert className="border-blue-200 bg-blue-50">
+              <Target className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                Manual allocation interface coming soon. This will allow you to drag and drop individual students 
+                between sections, set custom section sizes, and override automatic recommendations.
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       )}
@@ -382,8 +536,20 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                 ))}
             </div>
 
-            <div className="mt-4">
-              <Button className="bg-amber-600 hover:bg-amber-700">Allocate New Students</Button>
+            <div className="mt-4 flex space-x-3">
+              <Button 
+                className="bg-amber-600 hover:bg-amber-700"
+                onClick={handleAutoAllocation}
+                disabled={isAllocating}
+              >
+                Auto-Allocate New Students
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => setAllocationMode("manual")}
+              >
+                Manual Assignment
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --acu-purple: #663399;
+  --acu-purple-dark: #4a1a5c;
+  --acu-purple-light: #8b5fbf;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .acu-purple {
+    background-color: var(--acu-purple);
+  }
+
+  .acu-purple-dark {
+    background-color: var(--acu-purple-dark);
+  }
+
+  .acu-purple-light {
+    background-color: var(--acu-purple-light);
+  }
+}

@@ -19,28 +19,13 @@ interface CourseData {
   recommendedSections: number
   censusDate: Date
   isCensusLocked: boolean
+  facilitators: any[]
+  students: any[]
 }
 
 interface StudentAllocationProps {
   courseData: CourseData
 }
-
-// Mock student data
-const mockStudents = Array.from({ length: 75 }, (_, i) => ({
-  id: i + 1,
-  name: `Student ${i + 1}`,
-  email: `student${i + 1}@acu.edu.au`,
-  enrollmentDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
-  isNewEnrollment: i >= 73, // Last 2 are new enrollments
-  hasDiscussionActivity: Math.random() > 0.7,
-  currentSection: null,
-}))
-
-const mockOFs = [
-  { id: 1, name: "Dr. Sarah Johnson", email: "sarah.johnson@acu.edu.au", maxStudents: 25 },
-  { id: 2, name: "Prof. Michael Chen", email: "michael.chen@acu.edu.au", maxStudents: 25 },
-  { id: 3, name: "Dr. Emma Wilson", email: "emma.wilson@acu.edu.au", maxStudents: 25 },
-]
 
 export function StudentAllocation({ courseData }: StudentAllocationProps) {
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto")
@@ -54,13 +39,33 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
     // Simulate allocation algorithm
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
-    const studentsPerSection = Math.ceil(courseData.totalStudents / courseData.recommendedSections)
-    const allocation = mockOFs.map((of, index) => ({
-      sectionName: `Section ${index + 1}`,
-      of: of,
-      students: mockStudents.slice(index * studentsPerSection, (index + 1) * studentsPerSection),
-      ratio: `1:${Math.min(studentsPerSection, mockStudents.length - index * studentsPerSection)}`,
-    }))
+    // Use actual course data for allocation
+    const availableOFs = courseData.facilitators || []
+    const unassignedStudents = courseData.students?.filter((s) => !s.currentSectionId) || []
+
+    if (availableOFs.length === 0) {
+      setIsAllocating(false)
+      return
+    }
+
+    // Calculate optimal distribution
+    const studentsPerSection = Math.ceil(unassignedStudents.length / availableOFs.length)
+
+    const allocation = availableOFs
+      .map((of, index) => {
+        const startIndex = index * studentsPerSection
+        const endIndex = Math.min(startIndex + studentsPerSection, unassignedStudents.length)
+        const sectionStudents = unassignedStudents.slice(startIndex, endIndex)
+
+        return {
+          sectionName: `Tutorial Group ${String.fromCharCode(65 + index)}`, // A, B, C, etc.
+          of: of,
+          students: sectionStudents,
+          ratio: `1:${sectionStudents.length}`,
+          studentCount: sectionStudents.length,
+        }
+      })
+      .filter((section) => section.students.length > 0) // Only include sections with students
 
     setPreviewAllocation(allocation)
     setIsAllocating(false)
@@ -143,36 +148,66 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
             <CardDescription>Configure automatic student distribution parameters</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="target-ratio">Target Student:OF Ratio</Label>
-                <Input id="target-ratio" value="1:25" readOnly className="bg-gray-50" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sections-count">Number of Sections</Label>
-                <Input id="sections-count" value={courseData.recommendedSections} readOnly className="bg-gray-50" />
-              </div>
-            </div>
+            {courseData.facilitators && courseData.facilitators.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="target-ratio">Target Student:OF Ratio</Label>
+                    <Input id="target-ratio" value="1:25" readOnly className="bg-gray-50" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sections-count">Number of Sections</Label>
+                    <Input id="sections-count" value={courseData.facilitators.length} readOnly className="bg-gray-50" />
+                  </div>
+                </div>
 
-            <Alert className="border-blue-200 bg-blue-50">
-              <CheckCircle className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-800">
-                Auto-allocation will create <strong>{courseData.recommendedSections} sections</strong> with
-                approximately{" "}
-                <strong>{Math.ceil(courseData.totalStudents / courseData.recommendedSections)} students each</strong>,
-                maintaining optimal ratios.
-              </AlertDescription>
-            </Alert>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <h4 className="font-semibold text-blue-900 mb-2">Available Online Facilitators:</h4>
+                  <div className="space-y-2">
+                    {courseData.facilitators.map((of: any, index: number) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">{of.name}</span>
+                          {of.isMultiRole && (
+                            <span className="text-xs text-blue-600 ml-2">({of.roles?.join(", ")})</span>
+                          )}
+                        </div>
+                        <span className="text-sm text-gray-600">{of.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-            <div className="flex space-x-3">
-              <Button
-                onClick={handleAutoAllocation}
-                disabled={isAllocating}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {isAllocating ? "Calculating..." : "Generate Allocation Preview"}
-              </Button>
-            </div>
+                <Alert className="border-blue-200 bg-blue-50">
+                  <CheckCircle className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-blue-800">
+                    Auto-allocation will create <strong>{courseData.facilitators.length} sections</strong> distributing{" "}
+                    <strong>
+                      {courseData.students?.filter((s) => !s.currentSectionId).length || 0} unassigned students
+                    </strong>{" "}
+                    across available Online Facilitators.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex space-x-3">
+                  <Button
+                    onClick={handleAutoAllocation}
+                    disabled={isAllocating || !courseData.students?.some((s) => !s.currentSectionId)}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {isAllocating ? "Calculating..." : "Generate Allocation Preview"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  No Online Facilitators detected. Please add Teacher roles to staff members before proceeding with
+                  allocation.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       )}
@@ -195,28 +230,101 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <h4 className="font-semibold text-lg">{section.sectionName}</h4>
-                        <p className="text-sm text-muted-foreground">OF: {section.of.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          OF: {section.of.name}
+                          {section.of.isMultiRole && (
+                            <span className="text-xs text-blue-600 ml-1">
+                              (Multiple roles: {section.of.roles?.join(", ")})
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-500">{section.of.email}</p>
                       </div>
                       <div className="text-right">
                         <Badge variant="outline" className="mb-1">
                           {section.ratio}
                         </Badge>
-                        <p className="text-sm text-muted-foreground">{section.students.length} students</p>
+                        <p className="text-sm text-muted-foreground">{section.studentCount} students</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span className="text-sm text-green-700">Optimal ratio maintained</span>
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          section.studentCount <= 25
+                            ? "bg-green-500"
+                            : section.studentCount <= 35
+                              ? "bg-yellow-500"
+                              : "bg-red-500"
+                        }`}
+                      ></div>
+                      <span
+                        className={`text-sm ${
+                          section.studentCount <= 25
+                            ? "text-green-700"
+                            : section.studentCount <= 35
+                              ? "text-yellow-700"
+                              : "text-red-700"
+                        }`}
+                      >
+                        {section.studentCount <= 25
+                          ? "Optimal ratio maintained"
+                          : section.studentCount <= 35
+                            ? "Acceptable ratio"
+                            : "Exceeds recommended ratio"}
+                      </span>
+                    </div>
+
+                    {/* Show some student names as preview */}
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-xs text-gray-600 mb-1">Students assigned:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {section.students.slice(0, 3).map((student: any, idx: number) => (
+                          <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
+                            {student.name}
+                          </span>
+                        ))}
+                        {section.students.length > 3 && (
+                          <span className="text-xs text-gray-500">+{section.students.length - 3} more</span>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
 
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                All sections maintain optimal ratios. Ready to implement allocation.
+            <Alert
+              className={`${
+                previewAllocation.every((s: any) => s.studentCount <= 25)
+                  ? "border-green-200 bg-green-50"
+                  : previewAllocation.every((s: any) => s.studentCount <= 35)
+                    ? "border-yellow-200 bg-yellow-50"
+                    : "border-red-200 bg-red-50"
+              }`}
+            >
+              <CheckCircle
+                className={`h-4 w-4 ${
+                  previewAllocation.every((s: any) => s.studentCount <= 25)
+                    ? "text-green-600"
+                    : previewAllocation.every((s: any) => s.studentCount <= 35)
+                      ? "text-yellow-600"
+                      : "text-red-600"
+                }`}
+              />
+              <AlertDescription
+                className={`${
+                  previewAllocation.every((s: any) => s.studentCount <= 25)
+                    ? "text-green-800"
+                    : previewAllocation.every((s: any) => s.studentCount <= 35)
+                      ? "text-yellow-800"
+                      : "text-red-800"
+                }`}
+              >
+                {previewAllocation.every((s: any) => s.studentCount <= 25)
+                  ? "All sections maintain optimal ratios. Ready to implement allocation."
+                  : previewAllocation.every((s: any) => s.studentCount <= 35)
+                    ? "All sections are within acceptable limits. Ready to implement allocation."
+                    : "Some sections exceed recommended ratios. Consider adding more Online Facilitators or review allocation."}
               </AlertDescription>
             </Alert>
 
@@ -255,8 +363,8 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
             </Alert>
 
             <div className="space-y-3">
-              {mockStudents
-                .filter((s) => s.isNewEnrollment)
+              {courseData.students
+                ?.filter((s) => s.isNewEnrollment)
                 .map((student) => (
                   <div
                     key={student.id}

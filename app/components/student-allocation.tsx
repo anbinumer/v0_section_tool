@@ -23,6 +23,7 @@ import {
   Play,
   Bug,
   Info,
+  RefreshCw,
 } from "lucide-react"
 import { useCanvasApi } from "../lib/canvas-api-context"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -40,6 +41,7 @@ interface CourseData {
   facilitators: any[]
   students: any[]
   originalSections?: any[]
+  debugInfo?: any
 }
 
 interface StudentAllocationProps {
@@ -47,7 +49,7 @@ interface StudentAllocationProps {
 }
 
 export function StudentAllocation({ courseData }: StudentAllocationProps) {
-  const { autoAllocateStudents, allocateStudents, moveStudent, isLoading } = useCanvasApi()
+  const { autoAllocateStudents, allocateStudents, moveStudent, isLoading, syncWithCanvas } = useCanvasApi()
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto")
   const [selectedStudents, setSelectedStudents] = useState<number[]>([])
   const [previewAllocation, setPreviewAllocation] = useState<any>(null)
@@ -58,6 +60,7 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
   const [draggedStudent, setDraggedStudent] = useState<any>(null)
   const [localStudentAssignments, setLocalStudentAssignments] = useState<Map<string, string>>(new Map())
   const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [showDetailedDebug, setShowDetailedDebug] = useState(false)
 
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [manualMode, setManualMode] = useState(false)
@@ -427,6 +430,116 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
         </Alert>
       )}
 
+      {/* Enhanced Debug Information - Always Show When No Students Available */}
+      {(unassignedStudents.length === 0 || showDetailedDebug) && courseData.debugInfo && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Bug className="w-5 h-5 text-orange-600" />
+                <span>Student Detection Debug</span>
+              </div>
+              <div className="flex space-x-2">
+                <Button variant="outline" size="sm" onClick={() => setShowDetailedDebug(!showDetailedDebug)}>
+                  {showDetailedDebug ? "Hide Details" : "Show Details"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={syncWithCanvas} disabled={isLoading}>
+                  <RefreshCw className="w-4 h-4 mr-1" />
+                  Refresh Data
+                </Button>
+              </div>
+            </CardTitle>
+            <CardDescription>Detailed information about student detection and section classification</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white p-3 rounded border">
+                  <div className="text-sm font-medium">Total Enrollments</div>
+                  <div className="text-lg font-bold">{courseData.debugInfo.totalEnrollments}</div>
+                </div>
+                <div className="bg-white p-3 rounded border">
+                  <div className="text-sm font-medium">Total Sections</div>
+                  <div className="text-lg font-bold">{courseData.debugInfo.totalSections}</div>
+                </div>
+                <div className="bg-white p-3 rounded border">
+                  <div className="text-sm font-medium">Tool Sections</div>
+                  <div className="text-lg font-bold">{courseData.debugInfo.toolCreatedSectionIds.length}</div>
+                </div>
+                <div className="bg-white p-3 rounded border">
+                  <div className="text-sm font-medium">Original Sections</div>
+                  <div className="text-lg font-bold">{courseData.debugInfo.originalSectionIds.length}</div>
+                </div>
+              </div>
+
+              {/* Section Classification */}
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Section Classification:</h4>
+                <div className="bg-white p-3 rounded border text-xs">
+                  <div className="mb-2">
+                    <strong>Tool-Created Section IDs:</strong>{" "}
+                    {courseData.debugInfo.toolCreatedSectionIds.join(", ") || "None"}
+                  </div>
+                  <div>
+                    <strong>Original Section IDs:</strong>{" "}
+                    {courseData.debugInfo.originalSectionIds.join(", ") || "None"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Student Mapping */}
+              {showDetailedDebug && (
+                <div>
+                  <h4 className="font-semibold text-sm mb-2">Student Section Mapping:</h4>
+                  <div className="bg-white p-3 rounded border max-h-40 overflow-auto">
+                    {courseData.debugInfo.studentSectionMapping.map((student: any, index: number) => (
+                      <div key={index} className="text-xs mb-1 flex justify-between">
+                        <span>{student.name}</span>
+                        <span>Section: {student.sectionId}</span>
+                        <span className={student.isUnassigned ? "text-green-600 font-medium" : "text-gray-500"}>
+                          {student.isUnassigned ? "Available" : "Assigned"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Current Detection Results */}
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Current Detection Results:</h4>
+                <div className="bg-white p-3 rounded border text-xs">
+                  <div>
+                    Students Available for Allocation: <strong>{unassignedStudents.length}</strong>
+                  </div>
+                  <div>
+                    Expected from API: <strong>{courseData.unassignedStudents}</strong>
+                  </div>
+                  <div>
+                    Total Students: <strong>{courseData.totalStudents}</strong>
+                  </div>
+                  <div>
+                    Tool-Created Sections: <strong>{courseData.toolCreatedSections}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {unassignedStudents.length === 0 && (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800">
+                    <strong>Issue Detected:</strong> No students are being identified as available for allocation. This
+                    suggests all students are being classified as already in "tool-created" sections, or there's an
+                    issue with the section classification logic.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Allocation Mode Selection */}
       <Card>
         <CardHeader>
@@ -455,6 +568,7 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                   onClick={handleProceedWithAutoAllocation}
                   className="w-full bg-green-600 hover:bg-green-700"
                   data-testid="auto-allocate-btn"
+                  disabled={unassignedStudents.length === 0}
                 >
                   Proceed with Auto-Allocation
                 </Button>
@@ -477,6 +591,7 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                   variant="outline"
                   className="w-full"
                   data-testid="manual-mode-btn"
+                  disabled={unassignedStudents.length === 0}
                 >
                   Manual Assignment Mode
                 </Button>
@@ -512,72 +627,6 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
               <span className="text-sm font-medium text-blue-900">Status:</span>
             </div>
             <p className="text-sm text-blue-800 mt-1">{allocationStatus}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Enhanced Debug Information */}
-      {debugInfo && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Bug className="w-5 h-5 text-orange-600" />
-              <span>Debug Information</span>
-            </CardTitle>
-            <CardDescription>Technical details for troubleshooting</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div>
-                <h4 className="font-semibold text-sm">Timestamp:</h4>
-                <p className="text-xs text-gray-600">{debugInfo.timestamp}</p>
-              </div>
-
-              {debugInfo.courseData && (
-                <div>
-                  <h4 className="font-semibold text-sm">Course Data Summary:</h4>
-                  <div className="text-xs bg-gray-100 p-2 rounded">
-                    <div>Total Students: {debugInfo.courseData.totalStudents}</div>
-                    <div>Students Available for Allocation: {debugInfo.courseData.unassignedStudents}</div>
-                    <div>Facilitators: {debugInfo.courseData.facilitators}</div>
-                    <div>Original Sections: {debugInfo.courseData.originalSections}</div>
-                  </div>
-                </div>
-              )}
-
-              {debugInfo.unassignedStudents && (
-                <div>
-                  <h4 className="font-semibold text-sm">Students Available for Allocation:</h4>
-                  <div className="text-xs bg-gray-100 p-2 rounded max-h-32 overflow-auto">
-                    {debugInfo.unassignedStudents.length > 0 ? (
-                      debugInfo.unassignedStudents.map((student: any, index: number) => (
-                        <div key={index} className="mb-1">
-                          {student.name} (Canvas ID: {student.canvasUserId || "N/A"})
-                        </div>
-                      ))
-                    ) : (
-                      <div>No students available for allocation</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {debugInfo.apiResponse && (
-                <div>
-                  <h4 className="font-semibold text-sm">API Response:</h4>
-                  <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-40">
-                    {JSON.stringify(debugInfo.apiResponse, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {debugInfo.error && (
-                <div>
-                  <h4 className="font-semibold text-sm text-red-700">Error:</h4>
-                  <p className="text-xs text-red-600">{debugInfo.error}</p>
-                </div>
-              )}
-            </div>
           </CardContent>
         </Card>
       )}
@@ -651,8 +700,8 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                     <Alert className="mt-2 border-amber-200 bg-amber-50">
                       <AlertTriangle className="h-4 w-4 text-amber-600" />
                       <AlertDescription className="text-amber-800">
-                        No students available for allocation. All students may already be allocated to tool-created
-                        sections.
+                        No students available for allocation. Check the debug information above to understand why
+                        students aren't being detected as available.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -758,7 +807,7 @@ export function StudentAllocation({ courseData }: StudentAllocationProps) {
                     <div className="text-center text-gray-500 py-8">
                       <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                       <p>No students available for allocation</p>
-                      <p className="text-xs mt-1">All students may already be in tool-created sections</p>
+                      <p className="text-xs mt-1">Check debug information above for details</p>
                     </div>
                   )}
                 </div>

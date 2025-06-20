@@ -57,20 +57,30 @@ export async function POST(request: NextRequest) {
 
     const sections = await sectionsResponse.json()
     console.log("Sections fetched:", sections.length)
-
-    // Identify tool-created sections - these are the ones we manage
-    const toolCreatedSections = sections.filter(
-      (s: any) =>
-        s.name.includes("Tutorial Group") ||
-        s.sis_section_id?.startsWith("SM_") ||
-        s.name.match(/^(Tutorial|Section|Group)\s+[A-Z]$/i) ||
-        s.name.includes("- "), // Sections with facilitator names like "Tutorial Group A - Dr. Smith"
+    console.log(
+      "Section details:",
+      sections.map((s: any) => ({ id: s.id, name: s.name, sis_section_id: s.sis_section_id })),
     )
+
+    // Identify tool-created sections - be very specific about what we consider "tool-created"
+    const toolCreatedSections = sections.filter((s: any) => {
+      const isToolCreated =
+        s.sis_section_id?.startsWith("SM_") || // Our specific SIS ID pattern
+        (s.name.includes("Tutorial Group") && s.name.match(/Tutorial Group [A-Z]$/)) || // Exact pattern
+        s.name.match(/^Section [A-Z]$/) // Alternative pattern
+
+      console.log(`Section "${s.name}" (ID: ${s.id}, SIS: ${s.sis_section_id}) - Tool created: ${isToolCreated}`)
+      return isToolCreated
+    })
 
     // All other sections are considered "original/default" sections
     const originalSections = sections.filter((s: any) => !toolCreatedSections.some((ts: any) => ts.id === s.id))
 
     console.log("Tool-created sections:", toolCreatedSections.length)
+    console.log(
+      "Tool-created section names:",
+      toolCreatedSections.map((s: any) => s.name),
+    )
     console.log("Original/default sections:", originalSections.length)
     console.log(
       "Original section names:",
@@ -84,7 +94,7 @@ export async function POST(request: NextRequest) {
         const isInToolSection = toolCreatedSections.some((ts: any) => ts.id === e.course_section_id)
         const isInOriginalSection = originalSections.some((os: any) => os.id === e.course_section_id)
 
-        return {
+        const student = {
           id: e.id,
           name: e.user.name,
           email: e.user.email || `${e.user.login_id}@acu.edu.au`,
@@ -96,15 +106,27 @@ export async function POST(request: NextRequest) {
           isInToolSection,
           isInOriginalSection,
           // Key logic: Students are "unassigned" if they're NOT in tool-created sections
-          // This means students in original/default sections are always available for allocation
           isUnassignedForTool: !isInToolSection,
         }
+
+        console.log(
+          `Student "${student.name}" - Section ID: ${e.course_section_id}, In tool section: ${isInToolSection}, In original section: ${isInOriginalSection}, Unassigned for tool: ${student.isUnassignedForTool}`,
+        )
+
+        return student
       })
 
     console.log("Students processed:", students.length)
     console.log("Students in tool sections:", students.filter((s) => s.isInToolSection).length)
     console.log("Students in original sections:", students.filter((s) => s.isInOriginalSection).length)
     console.log("Students unassigned for tool:", students.filter((s) => s.isUnassignedForTool).length)
+
+    // Debug: Show detailed breakdown
+    const unassignedStudents = students.filter((s) => s.isUnassignedForTool)
+    console.log("Detailed unassigned students:")
+    unassignedStudents.forEach((s, index) => {
+      console.log(`  ${index + 1}. ${s.name} (Canvas ID: ${s.canvasUserId}, Section: ${s.currentSectionId})`)
+    })
 
     // Group enrollments by user to handle multiple roles per person
     const userEnrollments = new Map()
@@ -206,13 +228,13 @@ export async function POST(request: NextRequest) {
     })
 
     // Calculate metrics - students NOT in tool-created sections are "unassigned"
-    const unassignedStudents = students.filter((s) => s.isUnassignedForTool).length
+    const unassignedCount = students.filter((s) => s.isUnassignedForTool).length
     const studentsInToolSections = students.filter((s) => s.isInToolSection).length
 
     console.log("Final metrics:")
     console.log("- Total students:", students.length)
     console.log("- Students in tool-created sections:", studentsInToolSections)
-    console.log("- Students in original sections (unassigned for tool):", unassignedStudents)
+    console.log("- Students available for allocation:", unassignedCount)
     console.log("- Tool-created sections:", toolCreatedSections.length)
     console.log("- Original sections:", originalSections.length)
     console.log("- Online facilitators:", onlineFacilitators.length)
@@ -223,10 +245,10 @@ export async function POST(request: NextRequest) {
       totalStudents: students.length,
       existingCanvasSections: originalSections.length,
       toolCreatedSections: toolCreatedSections.length,
-      unassignedStudents, // Students not in tool-created sections
+      unassignedStudents: unassignedCount, // Students not in tool-created sections
       detectedOFs: onlineFacilitators.length,
       newEnrollmentsSinceLastCheck: students.filter((s: any) => s.isNewEnrollment).length,
-      recommendedSections: onlineFacilitators.length > 0 ? Math.ceil(unassignedStudents / 25) : 0,
+      recommendedSections: onlineFacilitators.length > 0 ? Math.ceil(unassignedCount / 25) : 0,
       censusDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
       isCensusLocked: false,
       students,
@@ -242,6 +264,18 @@ export async function POST(request: NextRequest) {
         name: s.name,
         studentCount: students.filter((st: any) => st.currentSectionId === s.id).length,
       })),
+      // Debug information
+      debugInfo: {
+        totalEnrollments: enrollments.length,
+        totalSections: sections.length,
+        toolCreatedSectionIds: toolCreatedSections.map((s: any) => s.id),
+        originalSectionIds: originalSections.map((s: any) => s.id),
+        studentSectionMapping: students.map((s: any) => ({
+          name: s.name,
+          sectionId: s.currentSectionId,
+          isUnassigned: s.isUnassignedForTool,
+        })),
+      },
     }
 
     console.log("Course data prepared successfully")

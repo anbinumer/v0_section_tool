@@ -119,4 +119,4 @@ function getActionType(actionText: string): string {
   } else {
     return 'other'
   }
-} 
+}

@@ -147,4 +147,4 @@ async function logAuditToCanvas(canvasUrl: string, apiToken: string, courseId: s
     console.error("Failed to log audit event:", error)
     // Don't fail the main operation if audit logging fails
   }
-} 
+}

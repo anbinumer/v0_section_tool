@@ -128,7 +128,7 @@ The Section Management Tool is a lightweight, educator-friendly LTI 1.3 applicat
 - **Week 4+:** Manual LIC-triggered scanning only
 
 **Dual Enrollment Cleanup Process:**
-```
+\`\`\`
 WHEN automated scan runs OR LIC opens dashboard:
 1. Calculate age of all dual enrollments
 2. If dual enrollment ≥ 7 days old:
@@ -146,7 +146,7 @@ WHEN automated scan runs OR LIC opens dashboard:
    └─────────────────────────────────────────┘
 3. LIC can manually remove from old sections when appropriate
 4. System logs all cleanup actions for audit trail
-```
+\`\`\`
 
 **Business Rules:**
 - Dual enrollment automatically flagged at 7 days (notification only)
@@ -155,7 +155,7 @@ WHEN automated scan runs OR LIC opens dashboard:
 - Timeline-based scanning reduces manual monitoring workload during critical weeks
 
 #### Core LIC Workflow (Human in the Loop)
-```
+\`\`\`
 1. LIC accesses Canvas Section Management Tool
 2. Tool scans course and displays:
    ┌─────────────────────────────────────────┐
@@ -179,10 +179,10 @@ WHEN automated scan runs OR LIC opens dashboard:
 5. LIC can manually reassign any student or OF to any section
 6. Tool validates and warns about ratio violations
 7. LIC implements final allocation decisions
-```
+\`\`\`
 
 #### F20: Unassigned Student Detection Workflow
-```
+\`\`\`
 1. Tool queries Canvas for current course enrollment
 2. Tool queries MongoDB for current section assignments
 3. Tool identifies students in Canvas but not in any tool-created section
@@ -192,10 +192,10 @@ WHEN automated scan runs OR LIC opens dashboard:
    - Students in existing Canvas sections (read-only)
    - Unassigned students requiring allocation
 5. LIC can allocate unassigned students to existing or new sections
-```
+\`\`\`
 
 #### F21: Section Name Validation Workflow
-```
+\`\`\`
 1. LIC attempts to create new section with name "Section A"
 2. Tool queries Canvas API for ALL existing sections in course
 3. If duplicate found:
@@ -209,10 +209,10 @@ WHEN automated scan runs OR LIC opens dashboard:
    └─────────────────────────────────────────┘
 4. LIC must choose different name to proceed
 5. Tool validates new name before allowing creation
-```
+\`\`\`
 
 #### F23: Post-Census Manual Control Workflow
-```
+\`\`\`
 PRE-CENSUS (First 2 weeks):
 1. New student enrolls in Canvas
 2. LIC opens tool
@@ -235,10 +235,10 @@ POST-CENSUS (After 2 weeks):
    └─────────────────────────────────────────┘
 4. LIC provides justification for audit trail
 5. Tool logs post-census allocation with reason
-```
+\`\`\`
 
 #### F16: Intelligent Role Detection Workflow
-```
+\`\`\`
 1. LIC opens section management tool
 2. Tool retrieves course enrollment via Canvas API
 3. Tool counts Students (role: student) and OFs (role: teacher/ta)
@@ -247,10 +247,10 @@ POST-CENSUS (After 2 weeks):
 6. Tool suggests course members who could be assigned Teacher role
 7. LIC assigns Teacher roles (either in tool or manually in Canvas)
 8. Tool re-scans and proceeds with section planning
-```
+\`\`\`
 
 #### F17: OF-Centric Allocation Engine Workflow
-```
+\`\`\`
 1. LIC opens section management tool
 2. Calculate student count and OF count
 3. Apply business rules for section creation
@@ -263,10 +263,10 @@ POST-CENSUS (After 2 weeks):
    - Specific students to specific sections
    - Override recommended ratios with justification
 6. Tool implements all assignments (students AND OFs)
-```
+\`\`\`
 
 #### F18: Best Practice Recommendations Display
-```
+\`\`\`
 Visual Indicators:
 🟢 IDEAL: 1-25 students per OF
 🟡 ACCEPTABLE: 26-35 students per OF  
@@ -277,10 +277,10 @@ Dashboard shows:
 - Total course student:OF ratio
 - Budget reality warnings
 - Alternative staffing suggestions
-```
+\`\`\`
 
 #### F15: Smart Section Movement with Dual Enrollment Workflow
-```
+\`\`\`
 STUDENT MOVE PROCESS WITH ACTIVITY-BASED LOGIC:
 
 1. LIC initiates student move from Section A to Section B
@@ -309,7 +309,7 @@ STUDENT MOVE PROCESS WITH ACTIVITY-BASED LOGIC:
    - ADD: Student appears in both sections in Canvas
    - MOVE: Student removed from A, added to B
 5. Dual enrollment tracking begins for ADD cases
-```
+\`\`\`
 
 ---
 

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, AlertTriangle, CheckCircle, TrendingUp, Zap, Target } from "lucide-react"
+import { Users, AlertTriangle, CheckCircle, TrendingUp, Zap, Target, Info } from "lucide-react"
 import { NoOFDetected } from "./no-of-detected"
 
 interface CourseData {
@@ -21,6 +21,7 @@ interface CourseData {
   hasOFs: boolean
   lic?: any
   otherStaff?: any[]
+  originalSections?: any[]
 }
 
 interface SectionOverviewProps {
@@ -29,7 +30,9 @@ interface SectionOverviewProps {
 
 export function SectionOverview({ courseData }: SectionOverviewProps) {
   const allocationProgress =
-    ((courseData.totalStudents - courseData.unassignedStudents) / courseData.totalStudents) * 100
+    courseData.toolCreatedSections > 0
+      ? ((courseData.totalStudents - courseData.unassignedStudents) / courseData.totalStudents) * 100
+      : 0
 
   // If no OFs detected, show the special component
   if (!courseData.hasOFs || courseData.detectedOFs === 0) {
@@ -54,6 +57,25 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
           <CardDescription>Current section allocation status and recommendations</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Original Section Info */}
+          {courseData.originalSections && courseData.originalSections.length > 0 && (
+            <Alert className="border-blue-200 bg-blue-50">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                <strong>Original Course Structure:</strong> This course has {courseData.originalSections.length}{" "}
+                existing section(s) with all {courseData.totalStudents} students. The tool will create new sections to
+                distribute students among Online Facilitators.
+                <div className="mt-2 space-y-1">
+                  {courseData.originalSections.map((section: any) => (
+                    <div key={section.id} className="text-sm">
+                      • <strong>{section.name}</strong>: {section.studentCount} students
+                    </div>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div className="flex justify-between items-center">
@@ -61,7 +83,7 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
                 <span className="text-lg font-bold">{courseData.totalStudents}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Existing Canvas Sections:</span>
+                <span className="text-sm font-medium">Original Canvas Sections:</span>
                 <span className="text-lg font-bold">{courseData.existingCanvasSections}</span>
               </div>
               <div className="flex justify-between items-center">
@@ -69,8 +91,10 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
                 <span className="text-lg font-bold">{courseData.toolCreatedSections}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Unassigned Students:</span>
-                <Badge variant="destructive">{courseData.unassignedStudents}</Badge>
+                <span className="text-sm font-medium">Students to Allocate:</span>
+                <Badge variant={courseData.unassignedStudents > 0 ? "destructive" : "default"}>
+                  {courseData.unassignedStudents}
+                </Badge>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium">Online Facilitators:</span>
@@ -83,7 +107,9 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
                 <h4 className="font-semibold text-purple-900 mb-2">Recommendation</h4>
                 <p className="text-sm text-purple-800 mb-3">
                   Create <strong>{courseData.recommendedSections} sections</strong> with approximately{" "}
-                  <strong>{Math.ceil(courseData.totalStudents / courseData.recommendedSections)} students each</strong>
+                  <strong>
+                    {Math.ceil(courseData.unassignedStudents / courseData.recommendedSections)} students each
+                  </strong>
                 </p>
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 rounded-full bg-green-500"></div>
@@ -102,13 +128,16 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Allocation Progress</span>
-              <span className="text-sm text-muted-foreground">{Math.round(allocationProgress)}% complete</span>
+          {/* Progress Display - only show if tool sections exist */}
+          {courseData.toolCreatedSections > 0 && (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Allocation Progress</span>
+                <span className="text-sm text-muted-foreground">{Math.round(allocationProgress)}% complete</span>
+              </div>
+              <Progress value={allocationProgress} className="h-2" />
             </div>
-            <Progress value={allocationProgress} className="h-2" />
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -122,10 +151,28 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
               </div>
               <div>
                 <h3 className="font-semibold">Auto-Allocate Students</h3>
-                <p className="text-sm text-muted-foreground">Automatically distribute students across sections</p>
+                <p className="text-sm text-muted-foreground">Automatically distribute students across new sections</p>
               </div>
             </div>
-            <Button className="w-full mt-4 bg-green-600 hover:bg-green-700">Proceed with Auto-Allocation</Button>
+            <Button
+              className="w-full mt-4 bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                // Switch to allocation tab and trigger auto-allocation
+                const allocationTab = document.querySelector('[value="allocation"]') as HTMLElement
+                if (allocationTab) {
+                  allocationTab.click()
+                  // Small delay to ensure tab switch completes
+                  setTimeout(() => {
+                    const autoAllocateBtn = document.querySelector('[data-testid="auto-allocate-btn"]') as HTMLElement
+                    if (autoAllocateBtn) {
+                      autoAllocateBtn.click()
+                    }
+                  }, 100)
+                }
+              }}
+            >
+              Proceed with Auto-Allocation
+            </Button>
           </CardContent>
         </Card>
 
@@ -140,7 +187,24 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
                 <p className="text-sm text-muted-foreground">Manually assign students to specific sections</p>
               </div>
             </div>
-            <Button variant="outline" className="w-full mt-4">
+            <Button
+              variant="outline"
+              className="w-full mt-4"
+              onClick={() => {
+                // Switch to allocation tab and enable manual mode
+                const allocationTab = document.querySelector('[value="allocation"]') as HTMLElement
+                if (allocationTab) {
+                  allocationTab.click()
+                  // Small delay to ensure tab switch completes
+                  setTimeout(() => {
+                    const manualBtn = document.querySelector('[data-testid="manual-mode-btn"]') as HTMLElement
+                    if (manualBtn) {
+                      manualBtn.click()
+                    }
+                  }, 100)
+                }
+              }}
+            >
               Manual Assignment Mode
             </Button>
           </CardContent>
@@ -157,7 +221,24 @@ export function SectionOverview({ courseData }: SectionOverviewProps) {
                 <p className="text-sm text-muted-foreground">Configure ratios and section preferences</p>
               </div>
             </div>
-            <Button variant="outline" className="w-full mt-4">
+            <Button
+              variant="outline"
+              className="w-full mt-4"
+              onClick={() => {
+                // Switch to allocation tab and open settings
+                const allocationTab = document.querySelector('[value="allocation"]') as HTMLElement
+                if (allocationTab) {
+                  allocationTab.click()
+                  // Small delay to ensure tab switch completes
+                  setTimeout(() => {
+                    const settingsBtn = document.querySelector('[data-testid="settings-btn"]') as HTMLElement
+                    if (settingsBtn) {
+                      settingsBtn.click()
+                    }
+                  }, 100)
+                }
+              }}
+            >
               Adjust Settings
             </Button>
           </CardContent>

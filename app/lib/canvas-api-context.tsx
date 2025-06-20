@@ -87,18 +87,18 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true)
     try {
-      const response = await fetch('/api/canvas/allocate-students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/canvas/allocate-students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...canvasApi.getConfig(),
-          allocations
-        })
+          allocations,
+        }),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Allocation failed')
+        throw new Error(errorData.error || "Allocation failed")
       }
 
       const result = await response.json()
@@ -116,18 +116,18 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true)
     try {
-      const response = await fetch('/api/canvas/auto-allocate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/canvas/auto-allocate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...canvasApi.getConfig(),
-          courseId: courseData.courseId
-        })
+          courseId: courseData.courseId,
+        }),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Auto-allocation failed')
+        throw new Error(errorData.error || "Auto-allocation failed")
       }
 
       const result = await response.json()
@@ -141,24 +141,25 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
   }
 
   const moveStudent = async (studentId: number, fromSectionId: number, toSectionId: number, justification?: string) => {
-    if (!isConfigured) throw new Error("Canvas not configured")
+    if (!isConfigured || !courseData) throw new Error("Canvas not configured")
 
     try {
-      const response = await fetch('/api/canvas/move-student', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/canvas/move-student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...canvasApi.getConfig(),
+          ...canvasApi.getConfig(), // This ensures the Canvas URL and API token are passed
+          courseId: courseData.courseId,
           studentId,
           fromSectionId,
           toSectionId,
-          justification
-        })
+          justification,
+        }),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to move student')
+        throw new Error(errorData.error || "Failed to move student")
       }
 
       await syncWithCanvas() // Refresh data
@@ -173,23 +174,23 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
     try {
       // For now, we'll use Canvas announcements as audit logs
       // TODO: Implement proper Canvas-based audit logging
-      const response = await fetch('/api/canvas/audit-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/canvas/audit-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...canvasApi.getConfig(),
           courseId: courseData.courseId,
-          ...filters
-        })
+          ...filters,
+        }),
       })
-      
+
       if (!response.ok) {
-        throw new Error('Failed to fetch audit logs')
+        throw new Error("Failed to fetch audit logs")
       }
 
       return await response.json()
     } catch (err) {
-      console.error('Error fetching audit logs:', err)
+      console.error("Error fetching audit logs:", err)
       return []
     }
   }
@@ -198,9 +199,12 @@ export function CanvasApiProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isConfigured) return
 
-    const interval = setInterval(() => {
-      syncWithCanvas().catch(console.error)
-    }, 5 * 60 * 1000) // 5 minutes
+    const interval = setInterval(
+      () => {
+        syncWithCanvas().catch(console.error)
+      },
+      5 * 60 * 1000,
+    ) // 5 minutes
 
     return () => clearInterval(interval)
   }, [isConfigured])
